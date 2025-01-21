@@ -11,7 +11,7 @@ import pandas as pd
 from utils.constants import LOG_DIR
 
 
-def setup_logger(name, level=logging.DEBUG):
+def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     """Set up a logger with timed rotating file handler."""
     # Ensure the log directory exists
     if not os.path.exists(LOG_DIR):
@@ -46,7 +46,8 @@ def setup_logger(name, level=logging.DEBUG):
     return logger
 
 
-def init_notion_client(logger):
+def init_notion_client(logger: logging.Logger) -> Client:
+    """Initialize the Notion client."""
 
     load_dotenv()
     notion_token = os.getenv("NOTION_TOKEN")
@@ -57,7 +58,7 @@ def init_notion_client(logger):
     return notion
 
 
-def convert_duration_to_hours(duration_str):
+def convert_duration_to_hours(duration_str: str) -> float:
     """
     Convert duration string to decimal hours.
     Handles both 'h:mm:ss' and 'm:ss' formats.
@@ -89,10 +90,8 @@ def convert_duration_to_hours(duration_str):
     return total_hours
 
 
-# def update_yesterday_page():
-
-
-def get_children_rec(notion, page_id, logger):
+def get_children_rec(notion: Client, page_id: str, logger: logging.Logger) -> list:
+    """Retrieve children blocks recursively."""
     blocks = []
     try:
         # Retrieve the children of the block
@@ -115,7 +114,10 @@ def get_children_rec(notion, page_id, logger):
     return blocks
 
 
-def process_input_data(data, logger):
+def process_input_data(data: str, logger: logging.Logger) -> dict:
+    """
+    Processes input JSON data to extract and compute sleep and steps metrics.
+    """
 
     cleaned_data = {}
     try:
@@ -179,7 +181,50 @@ def process_input_data(data, logger):
     return cleaned_data
 
 
-def create_page(notion, database_id, dict_cleaned_data: dict, children, logger):
+def update_yesterday_page(
+    notion: Client, database_id: str, dict_cleaned_data: dict, logger: logging.Logger
+) -> None:
+    """Update the page for yesterday's data."""
+    # Query the database to get the pages
+    logger.info("Querying the database to get the pages.")
+    pages_in_db = notion.databases.query(
+        database_id=database_id,
+        filter={"property": "🗓 Date", "date": {"this_week": {}}},
+    )
+    df_pages = pd.DataFrame(pages_in_db["results"])
+    logger.info("Retrieved pages from the database.")
+
+    # Extract the date from the properties
+    logger.info("Extracting dates from the page properties.")
+    get_date_from_properties = lambda x: pd.to_datetime(
+        x["properties"]["🗓 Date"]["date"]["start"]
+    )
+    df_pages["page_date"] = df_pages.apply(get_date_from_properties, axis=1)
+
+    # Get ID of yesterday's page
+    yesterday = datetime.now() - timedelta(days=1)
+    yesterday = yesterday.strftime("%B %d, %Y")
+    logger.info(f"Looking for the page with date: {yesterday}.")
+    pages_with_yesterday_date = df_pages[df_pages["page_date"] == yesterday]
+    id_yesterday_page = pages_with_yesterday_date["id"].values[0]
+    logger.info(f"Found page with ID: {id_yesterday_page} for yesterday's date.")
+
+    yesterday_steps = dict_cleaned_data.get("total_yesterday_steps", None)
+    logger.info(f"Updating yesterday's page with steps: {yesterday_steps}.")
+    notion.pages.update(
+        id_yesterday_page, properties={"👟 Steps": {"number": int(yesterday_steps)}}
+    )
+    logger.info("Successfully updated yesterday's page.")
+
+
+def create_daily_page(
+    notion: Client,
+    database_id: str,
+    dict_cleaned_data: dict,
+    children: list,
+    logger: logging.Logger,
+) -> None:
+    """Create a new daily page in the Notion database."""
 
     try:
 
