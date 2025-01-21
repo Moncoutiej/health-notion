@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import os
 
 from notion_client import Client
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
@@ -121,19 +121,55 @@ def process_input_data(data, logger):
     try:
         input_data: dict = json.loads(data)
 
+        sleep_data = {k: v for k, v in input_data.items() if k.startswith("sleep")}
+        df_sleep = pd.DataFrame(sleep_data)
         format_date_input = "%d %b %Y at %H:%M"
+        df_sleep["sleep_start_date"] = pd.to_datetime(
+            df_sleep["sleep_start_date"], format=format_date_input
+        )
+        df_sleep["sleep_end_date"] = pd.to_datetime(
+            df_sleep["sleep_end_date"], format=format_date_input
+        )
+        df_sleep["sleep_duration"] = (
+            df_sleep["sleep_end_date"] - df_sleep["sleep_start_date"]
+        )
+        df_sleep["sleep_duration"] = df_sleep["sleep_duration"].dt.total_seconds() / 60
+        yesterday = datetime.now() - timedelta(days=1)
+        df_last_night = df_sleep.loc[
+            ~(
+                (df_sleep["sleep_end_date"].dt.day == yesterday.day)
+                & (df_sleep["sleep_end_date"].dt.hour < 12)
+            )
+        ]
+        last_night_sleep = (
+            df_last_night.loc[
+                df_last_night["sleep_label"].isin(["REM", "Core", "Deep"]),
+                "sleep_duration",
+            ].sum()
+            / 60
+        )
+        last_night_time_in_bed = (
+            df_last_night.loc[
+                df_last_night["sleep_label"] == "In Bed", "sleep_duration"
+            ].sum()
+            / 60
+        )
+        last_night_sleep, last_night_time_in_bed
+
+        total_daily_sleep = (
+            last_night_time_in_bed if last_night_sleep == 0 else last_night_sleep
+        )
+
+        steps_data = {k: v for k, v in input_data.items() if k.startswith("steps")}
+        df_steps = pd.DataFrame(steps_data)
+        total_steps = df_steps["steps_value"].astype(int).sum()
 
         cleaned_data = {
-            "sleep_end_date": datetime.strptime(
-                input_data.get(
-                    "sleep_end_date", datetime.now().strftime(format_date_input)
-                ),
-                format_date_input,
-            ),
-            "total_daily_sleep": convert_duration_to_hours(
-                input_data.get("sleep_duration", 0)
-            ),
-            "total_yesterday_steps": input_data.get("steps_value", 0),
+            "total_daily_sleep": total_daily_sleep,
+            "last_night_sleep": last_night_sleep,
+            "last_night_time_in_bed": last_night_time_in_bed,
+            "sleep_end_date": df_last_night["sleep_end_date"].max(),
+            "total_yesterday_steps": total_steps,
         }
         logger.info("Input Data Processed results : %s", cleaned_data)
 
@@ -143,7 +179,7 @@ def process_input_data(data, logger):
     return cleaned_data
 
 
-def create_daily_page(notion, database_id, dict_cleaned_data: dict, children, logger):
+def create_page(notion, database_id, dict_cleaned_data: dict, children, logger):
 
     try:
 
