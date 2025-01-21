@@ -3,10 +3,10 @@ import os
 from utils.func import (
     init_notion_client,
     get_children_rec,
-    create_page,
+    create_daily_page,
     setup_logger,
     process_input_data,
-    # update_yesterday_page,
+    update_yesterday_page,
 )
 
 
@@ -51,13 +51,15 @@ if __name__ == "__main__":
     cleaned_data = process_input_data(data, logger)
 
     # Get Yesterday Page and Update the step number data
-    # update_yesterday_page()
+    update_yesterday_page(
+        notion, os.environ.get("DAILY_DATABASE_ID"), cleaned_data, logger
+    )
 
     # Create the Daily Page with sleep data
 
     # Get the page children from an example page to create the daily template like the other one
     children = get_children_rec(notion, os.environ.get("TEMPLATE_PAGE_ID"), logger)
 
-    create_page(
+    create_daily_page(
         notion, os.environ.get("DAILY_DATABASE_ID"), cleaned_data, children, logger
     )
