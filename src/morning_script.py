@@ -3,7 +3,7 @@ import os
 from utils.func import (
     init_notion_client,
     get_children_rec,
-    create_daily_page,
+    create_page,
     setup_logger,
     process_input_data,
     # update_yesterday_page,
@@ -58,6 +58,6 @@ if __name__ == "__main__":
     # Get the page children from an example page to create the daily template like the other one
     children = get_children_rec(notion, os.environ.get("TEMPLATE_PAGE_ID"), logger)
 
-    create_daily_page(
+    create_page(
         notion, os.environ.get("DAILY_DATABASE_ID"), cleaned_data, children, logger
     )
