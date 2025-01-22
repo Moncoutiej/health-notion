@@ -48,14 +48,16 @@ def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
 
 def init_notion_client(logger: logging.Logger) -> Client:
     """Initialize the Notion client."""
+    try:
+        load_dotenv()
+        notion_token = os.getenv("NOTION_TOKEN")
+        notion = Client(auth=notion_token)
 
-    load_dotenv()
-    notion_token = os.getenv("NOTION_TOKEN")
-    notion = Client(auth=notion_token)
-
-    logger.info("Client succesfully initialised")
-
-    return notion
+        logger.info("Client successfully initialized")
+        return notion
+    except Exception as e:
+        logger.error(f"Failed to initialize Notion client: {e}")
+        raise
 
 
 def convert_duration_to_hours(duration_str: str) -> float:
@@ -185,36 +187,39 @@ def update_yesterday_page(
     notion: Client, database_id: str, dict_cleaned_data: dict, logger: logging.Logger
 ) -> None:
     """Update the page for yesterday's data."""
-    # Query the database to get the pages
-    logger.info("Querying the database to get the pages.")
-    pages_in_db = notion.databases.query(
-        database_id=database_id,
-        filter={"property": "🗓 Date", "date": {"this_week": {}}},
-    )
-    df_pages = pd.DataFrame(pages_in_db["results"])
-    logger.info("Retrieved pages from the database.")
+    try:
+        # Query the database to get the pages
+        logger.info("Querying the database to get the pages.")
+        pages_in_db = notion.databases.query(
+            database_id=database_id,
+            filter={"property": "🗓 Date", "date": {"this_week": {}}},
+        )
+        df_pages = pd.DataFrame(pages_in_db["results"])
+        logger.info("Retrieved pages from the database.")
 
-    # Extract the date from the properties
-    logger.info("Extracting dates from the page properties.")
-    get_date_from_properties = lambda x: pd.to_datetime(
-        x["properties"]["🗓 Date"]["date"]["start"]
-    )
-    df_pages["page_date"] = df_pages.apply(get_date_from_properties, axis=1)
+        # Extract the date from the properties
+        logger.info("Extracting dates from the page properties.")
+        get_date_from_properties = lambda x: pd.to_datetime(
+            x["properties"]["🗓 Date"]["date"]["start"]
+        )
+        df_pages["page_date"] = df_pages.apply(get_date_from_properties, axis=1)
 
-    # Get ID of yesterday's page
-    yesterday = datetime.now() - timedelta(days=1)
-    yesterday = yesterday.strftime("%B %d, %Y")
-    logger.info(f"Looking for the page with date: {yesterday}.")
-    pages_with_yesterday_date = df_pages[df_pages["page_date"] == yesterday]
-    id_yesterday_page = pages_with_yesterday_date["id"].values[0]
-    logger.info(f"Found page with ID: {id_yesterday_page} for yesterday's date.")
+        # Get ID of yesterday's page
+        yesterday = datetime.now() - timedelta(days=1)
+        yesterday = yesterday.strftime("%B %d, %Y")
+        logger.info(f"Looking for the page with date: {yesterday}.")
+        pages_with_yesterday_date = df_pages[df_pages["page_date"] == yesterday]
+        id_yesterday_page = pages_with_yesterday_date["id"].values[0]
+        logger.info(f"Found page with ID: {id_yesterday_page} for yesterday's date.")
 
-    yesterday_steps = dict_cleaned_data.get("total_yesterday_steps", None)
-    logger.info(f"Updating yesterday's page with steps: {yesterday_steps}.")
-    notion.pages.update(
-        id_yesterday_page, properties={"👟 Steps": {"number": int(yesterday_steps)}}
-    )
-    logger.info("Successfully updated yesterday's page.")
+        yesterday_steps = dict_cleaned_data.get("total_yesterday_steps", None)
+        logger.info(f"Updating yesterday's page with steps: {yesterday_steps}.")
+        notion.pages.update(
+            id_yesterday_page, properties={"👟 Steps": {"number": int(yesterday_steps)}}
+        )
+        logger.info("Successfully updated yesterday's page.")
+    except Exception as e:
+        logger.error(f"Failed to update yesterday's page: {e}")
 
 
 def create_daily_page(
